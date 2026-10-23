@@ -1,0 +1,248 @@
+# Copyright: (c) 2020-2026, Rafał Safin <rafal.safin@rafsaf.pl>
+# GNU Affero General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/agpl-3.0.txt)
+
+from datetime import timedelta
+
+from django.contrib.auth.decorators import login_required
+from django.db.models import Count, Sum
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+
+from base import forms, models
+from base.models.profile import Profile
+
+
+@login_required
+def new_outline_create(request: HttpRequest) -> HttpResponse:
+    """creates new user's outline login required"""
+    profile: Profile = request.user.profile  # type: ignore
+
+    first_time_delta = timezone.now() - timedelta(days=3)
+    show_first_time_msg = False
+    if (
+        request.user.date_joined >= first_time_delta  # type: ignore
+        and models.Outline.objects.filter(owner=request.user).count() == 0
+    ):
+        show_first_time_msg = True
+
+    form1 = forms.OutlineForm(None)
+    form2 = forms.ChangeServerForm(None)
+
+    form1.fields["world"].choices = sorted(  # type: ignore
+        [
+            (f"{world.pk}", f"{world.game_name()}")
+            for world in models.World.objects.filter(
+                server=profile.server, pending_delete=False
+            )
+        ],
+        key=lambda choice: choice[1],
+    )
+
+    if request.method == "POST":
+        if "form1" in request.POST:
+            form1 = forms.OutlineForm(request.POST)
+            form1.fields["world"].choices = sorted(  # type: ignore
+                [
+                    (f"{world.pk}", f"{world.game_name()}")
+                    for world in models.World.objects.filter(
+                        server=profile.server, pending_delete=False
+                    )
+                ],
+                key=lambda choice: choice[1],
+            )
+
+            if form1.is_valid():
+                world = form1.cleaned_data["world"]
+                world_instance = get_object_or_404(models.World, pk=int(world))
+                new_instance = models.Outline.objects.select_related(
+                    "owner",
+                    "owner__profile",
+                    "world",
+                    "world__server",
+                ).create(
+                    owner=request.user,
+                    date=form1.cleaned_data["date"],
+                    name=form1.cleaned_data["name"],
+                    world=world_instance,
+                    morale_on=profile.default_morale_on,
+                    initial_outline_target_dist=world_instance.max_noble_distance,
+                    input_data_type=profile.input_data_type,
+                    sending_option=profile.sending_option,
+                    send_message_with_url=profile.send_message_with_url,
+                    title_message=profile.send_message_title_message,
+                    text_message=profile.send_message_text_message,
+                )
+                result = models.Result(outline=new_instance)
+                result.save()
+                new_instance.create_stats()
+
+                return redirect("base:planer_create_select", new_instance.pk)
+        if "form2" in request.POST:
+            form2 = forms.ChangeServerForm(request.POST)
+            if form2.is_valid():
+                new_server = form2.cleaned_data["server"]
+                new_server = get_object_or_404(models.Server, dns=new_server)
+                profile = request.user.profile  # type: ignore
+                profile.server = new_server
+                profile.server_bind = True
+                profile.save()
+                return redirect("base:planer_create")
+
+    context = {
+        "form1": form1,
+        "profile": profile,
+        "form2": form2,
+        "show_first_time_msg": show_first_time_msg,
+    }
+    return render(request, "base/new_outline/new_outline_create.html", context)
+
+
+@login_required
+def new_outline_create_select(  # noqa: PLR0912
+    request: HttpRequest, _id: int
+) -> HttpResponse:
+    """select user's ally and enemy tribe after creating outline, login required"""
+    instance = get_object_or_404(
+        models.Outline.objects.select_related("world"),
+        pk=_id,
+        owner=request.user,
+        editable="active",
+    )
+
+    ally_tribe: list[models.Tribe] = [
+        tribe
+        for tribe in models.Tribe.objects.filter(
+            world=instance.world, tag__in=instance.ally_tribe_tag
+        )
+        .annotate(
+            player_count=Count("player"),
+            village_count=Sum("player__villages"),
+        )
+        .order_by("tag")
+    ]
+    enemy_tribe: list[models.Tribe] = [
+        tribe
+        for tribe in models.Tribe.objects.filter(
+            world=instance.world, tag__in=instance.enemy_tribe_tag
+        )
+        .annotate(
+            player_count=Count("player"),
+            village_count=Sum("player__villages"),
+        )
+        .order_by("tag")
+    ]
+
+    banned_tribe_id = [tribe.pk for tribe in ally_tribe + enemy_tribe]
+
+    choices = [("banned", "--------")] + [
+        (f"{tribe.tag}", f"{tribe.tag}")
+        for tribe in models.Tribe.objects.filter(world=instance.world)
+        .exclude(pk__in=banned_tribe_id)
+        .order_by("tag")
+    ]
+
+    sugested_ally_tribes: list[str] = []
+    sugested_enemy_tribes: list[str] = []
+    for old_outline in (
+        models.Outline.objects.filter(world=instance.world, owner=request.user)
+        .exclude(id=_id)
+        .order_by("-created")[:5]
+    ):
+        for old_ally_tribe_tag in old_outline.ally_tribe_tag:
+            if (old_ally_tribe_tag, old_ally_tribe_tag) in choices:
+                if (
+                    len(sugested_ally_tribes) < 6
+                    and old_ally_tribe_tag not in sugested_ally_tribes
+                ):
+                    sugested_ally_tribes.append(old_ally_tribe_tag)
+        for old_enemy_tribe_tag in old_outline.enemy_tribe_tag:
+            if (old_enemy_tribe_tag, old_enemy_tribe_tag) in choices:
+                if (
+                    len(sugested_enemy_tribes) < 6
+                    and old_enemy_tribe_tag not in sugested_enemy_tribes
+                ):
+                    sugested_enemy_tribes.append(old_enemy_tribe_tag)
+
+    if request.method == "POST":
+        if "tribe1" in request.POST:
+            form1 = forms.MyTribeTagForm(request.POST)
+            form1.fields["tribe1"].choices = choices  # type: ignore
+            form2 = forms.EnemyTribeTagForm()
+            form2.fields["tribe2"].choices = choices  # type: ignore
+
+            if form1.is_valid():
+                tribe = form1.cleaned_data["tribe1"]
+                instance.ally_tribe_tag.append(tribe)
+                instance.save()
+                return redirect("base:planer_create_select", _id)
+        elif "tribe2" in request.POST:
+            form1 = forms.MyTribeTagForm()
+            form1.fields["tribe1"].choices = choices  # type: ignore
+            form2 = forms.EnemyTribeTagForm(request.POST)
+            form2.fields["tribe2"].choices = choices  # type: ignore
+
+            if form2.is_valid():
+                tribe = form2.cleaned_data["tribe2"]
+                instance.enemy_tribe_tag.append(tribe)
+                instance.save()
+                return redirect("base:planer_create_select", _id)
+        else:
+            form1 = forms.MyTribeTagForm()
+            form1.fields["tribe1"].choices = choices  # type: ignore
+            form2 = forms.EnemyTribeTagForm()
+            form2.fields["tribe2"].choices = choices  # type: ignore
+
+    else:
+        form1 = forms.MyTribeTagForm()
+        form1.fields["tribe1"].choices = choices  # type: ignore
+        form2 = forms.EnemyTribeTagForm()
+        form2.fields["tribe2"].choices = choices  # type: ignore
+
+    context = {
+        "instance": instance,
+        "form1": form1,
+        "form2": form2,
+        "ally": ally_tribe,
+        "ally_village_sum": sum(tribe.village_count for tribe in ally_tribe),  # type: ignore
+        "ally_player_sum": sum(tribe.player_count for tribe in ally_tribe),  # type: ignore
+        "enemy_village_sum": sum(tribe.village_count for tribe in enemy_tribe),  # type: ignore
+        "enemy_player_sum": sum(tribe.player_count for tribe in enemy_tribe),  # type: ignore
+        "enemy": enemy_tribe,
+        "sugested_ally_tribes": sugested_ally_tribes,
+        "sugested_enemy_tribes": sugested_enemy_tribes,
+    }
+    return render(request, "base/new_outline/new_outline_create_select.html", context)
+
+
+@require_POST
+@login_required
+def outline_delete_ally_tags(request: HttpRequest, _id: int) -> HttpResponse:
+    """Delete ally tribe tags from outline"""
+    instance = get_object_or_404(models.Outline, pk=_id, owner=request.user)
+    instance.ally_tribe_tag = list()
+    instance.save()
+    return redirect("base:planer_create_select", _id)
+
+
+@require_POST
+@login_required
+def outline_delete_enemy_tags(request: HttpRequest, _id: int) -> HttpResponse:
+    """Delete enemy tribe tags from outline"""
+
+    instance = get_object_or_404(models.Outline, pk=_id, owner=request.user)
+    instance.enemy_tribe_tag = list()
+    instance.save()
+    return redirect("base:planer_create_select", _id)
+
+
+@require_POST
+@login_required
+def outline_disable_editable(request: HttpRequest, _id: int) -> HttpResponse:
+    """Outline not editable after chosing tags"""
+
+    instance = get_object_or_404(models.Outline, pk=_id, owner=request.user)
+    instance.editable = "inactive"
+    instance.save()
+    return redirect("base:planer")

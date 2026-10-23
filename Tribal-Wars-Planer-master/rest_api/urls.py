@@ -1,0 +1,46 @@
+# Copyright: (c) 2020-2026, Rafał Safin <rafal.safin@rafsaf.pl>
+# GNU Affero General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/agpl-3.0.txt)
+
+from django.urls import path
+
+from rest_api import views
+
+app_name = "rest_api"
+
+urlpatterns = [
+    path("public/v1/overview/", views.public_overview, name="public_outline_overview"),
+    path(
+        "shipment/<int:pk>/overviews/",
+        views.shipment_overviews,
+        name="shipment_overviews",
+    ),
+    path(
+        "shipment/<int:pk>/add-to-send-lst/",
+        views.shipment_add_to_send_lst,
+        name="shipment_add_to_send_lst",
+    ),
+    path("stripe-key/", views.stripe_config, name="stripe_key"),
+    path("stripe-session/", views.stripe_checkout_session, name="stripe_session"),
+    path("stripe-webhook/", views.stripe_webhook, name="stripe_webhook"),
+    path("target-time-update/", views.target_time_update, name="target_time_update"),
+    path("target-delete/", views.delete_target, name="target_delete"),
+    path(
+        "overview-hide-state-update/",
+        views.overview_state_update,
+        name="hide_state_update",
+    ),
+    path(
+        "change-buildings-array/",
+        views.change_buildings_array,
+        name="change_buildings_array",
+    ),
+    path(
+        "change-weight-building/",
+        views.change_weight_model_buildings,
+        name="change_weight_building",
+    ),
+    path("metrics/", views.metrics_export, name="metrics_export"),
+    path("healthcheck/", views.healthcheck, name="healthcheck"),
+    path("public/ht/", views.healthcheck, name="public_healthcheck"),
+    path("sentry-debug/", views.trigger_error, name="sentry_debug"),
+]

@@ -1,0 +1,17 @@
+{% extends "base/base.html" %} {% block media_overwrite %}
+  <style>
+    button.btn.btn-secondary {
+      border-radius: 0.25rem !important;
+      margin-right: 0.2rem !important;
+    }
+    a.btn.btn-secondary {
+      border-radius: 0.25rem !important;
+      margin-right: 0.2rem !important;
+    }
+    button.btn:disabled {
+      display: none !important;
+    }
+  </style>
+{% endblock %} {% block content_wrapper %}
+  <div class="container">{% block content %}{% endblock %}</div>
+{% endblock %}

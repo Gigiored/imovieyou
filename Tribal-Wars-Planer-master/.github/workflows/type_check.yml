@@ -1,0 +1,29 @@
+name: type-check
+on:
+  pull_request:
+    branches:
+      - "**"
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  type_check:
+    strategy:
+      matrix:
+        check:
+          - "ruff check ."
+          - "ruff format --check ."
+          - "djhtml --check base shipments templates"
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Python and uv Environment
+        uses: ./.github/actions/setup-python-uv
+
+      - name: Run ${{ matrix.check }}
+        run: |
+          uv run ${{ matrix.check }}

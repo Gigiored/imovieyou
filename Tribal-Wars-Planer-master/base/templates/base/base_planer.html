@@ -1,0 +1,141 @@
+{% extends 'base/base.html' %}
+{% load i18n %}
+{% block title %}{% trans 'My outlines' %}{% endblock %}
+{% block content %}
+    {% load crispy_forms_tags %}
+    <div class="table-responsive">
+        <table class="table table-striped table-teal-head mt-3">
+            <thead>
+                <tr>
+                    <th class='text-nowrap' scope="col" style="border:1px solid teal">{% trans 'Outline Name' %}</th>
+                    <th scope="col" style="border:1px solid teal">{% trans 'Date' %}</th>
+                    <th scope="col" style="border:1px solid teal">{% trans 'Created' %}</th>
+                    <th scope="col" style="border:1px solid teal">{% trans 'World' %}</th>
+                    <th scope="col" style="border:1px solid teal">{% trans 'Ally' %}</th>
+                    <th scope="col" style="border:1px solid teal">{% trans 'Enemy' %}</th>
+                    <th scope="col" style="border:1px solid teal">{% trans 'Hide' %}</th>
+                    <th scope="col" style="border:1px solid teal">{% trans 'Duplicate' %}</th>
+                    <th scope="col" style="border:1px solid teal">{% trans 'Delete' %}</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                {% for instance in outlines %}
+                    <tr class="{% if instance.status != 'active' %}row-expired{% endif %}">
+                        <td>
+                            <a class="btn btn-secondary my-2 plausible-event-name=TWP+Planer+List+Action plausible-event-action=open_outline" href="{% if instance.overview_num %}{% url 'base:planer_detail_results' instance.id %}{% elif instance.initial_outline_targets or instance.initial_outline_fakes or instance.initial_outline_ruins %}{% url 'base:planer_initial_form' instance.id %}{% else %}{% url 'base:planer_detail' instance.id %}{% endif %}" role="button">{% if instance.overview_num %}<i class="bi bi-eye"></i>{% elif instance.initial_outline_targets or instance.initial_outline_fakes or instance.initial_outline_ruins %}<i class="bi bi-pencil"></i>{% endif %} {{instance.name}}</a>
+                            {% if instance.parent_outline_id %}
+                                <br><small>{% trans '(Copied from ' %}{{instance.parent_outline_name}})</small>
+                            {% endif %}
+                        </td>
+                        <td><p class="my-2 mt-3">{{instance.date}}</p></td>
+                        <td><p class="my-2 mt-3">{{instance.created}}<br>{{instance.expires_in}}</p></td>
+                        <td><p class="my-2 mt-3">{{instance.world_human}}</p></td>
+                        <td><p class="my-2 mt-3">{{instance.ally_tribe_tag}}</p></td>
+                        <td><p class="my-2 mt-3">{{instance.enemy_tribe_tag}}</p></td>
+                        <td>
+                            {% if instance.status == 'active' %}
+
+                                <form action="{% url 'base:planer_status' instance.id %}?show-hidden={{ show_hidden | lower }}" method="POST">
+                                    {% csrf_token %}
+                                    <button onclick="this.disabled=true;this.form.submit();" class="btn btn-secondary my-2 plausible-event-name=TWP+Planer+List+Action plausible-event-action=hide">{% trans 'Hide' %}</button>
+                                </form>
+
+                            {% else %}
+
+                                <form action="{% url 'base:planer_status' instance.id %}?show-hidden={{ show_hidden | lower }}" method="POST">
+                                    {% csrf_token %}
+                                    <button onclick="this.disabled=true;this.form.submit();" class="btn btn-secondary my-2 plausible-event-name=TWP+Planer+List+Action plausible-event-action=show">{% trans 'Show' %}</button>
+                                </form>
+
+                            {% endif %}
+
+                        </td>
+                        <td>
+                            <div>
+                                <button type="button" class="btn btn-secondary my-2 plausible-event-name=TWP+Planer+List+Action plausible-event-action=duplicate_open" data-bs-toggle="modal" data-bs-target="#Duplicate-{{instance.id}}">{% trans 'Duplicate' %}</button>
+                            </div>
+
+                            <div class="modal fade" id="Duplicate-{{instance.id}}" tabindex="-1" role="dialog" aria-hidden="true">
+                                <div class="modal-dialog modal-dialog-centered" role="document">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h4 class="modal-title">{% trans 'Duplicate an outline' %}</h4>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <h4 class="md-correct2">{{instance.name}}</h4>
+                                            <p>{% trans "You are about to create a copy of this outline. Ally and enemy tribes cannot be changed." %}</p>
+
+                                            <form id="duplicate-{{instance.id}}-form" method="POST">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="form1" value="">
+                                                {{ instance.duplicate_form | crispy }}
+                                            </form>
+
+                                        </div>
+                                        <div class="modal-footer">
+
+                                            <button id="duplicate-{{instance.id}}-btn" type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                                <b>{% trans 'Close' %}</b>
+                                            </button>
+                                            <button onclick="handleClickButton(this,`{% trans 'Saving...' %}`,`duplicate-{{instance.id}}-form`,``,true);" class="btn btn-ocean plausible-event-name=TWP+Planer+List+Action plausible-event-action=duplicate_submit">{% trans 'Duplicate' %}</button>
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% if instance.duplicate_form.errors %}
+                                <script type="module">document.addEventListener("DOMContentLoaded", function(event) {const element = document.getElementById('Duplicate-{{instance.id}}'); if (element) { new bootstrap.Modal(element).show(); }});</script>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div>
+                                <button type="button" class="btn btn-secondary my-2 plausible-event-name=TWP+Planer+List+Action plausible-event-action=delete_open" data-bs-toggle="modal" data-bs-target="#ValidationModal-{{instance.id}}">{% trans 'Delete' %}</button>
+                            </div>
+
+                            <div class="modal fade" id="ValidationModal-{{instance.id}}" tabindex="-1" role="dialog" aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
+                                <div class="modal-dialog modal-dialog-centered" role="document">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h4 class="modal-title">{% trans 'Warning' %}</h4>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <h4 class="md-correct2">{{instance.name}}</h4>
+                                            <p>{% trans "You will lose all progress on this outline. The orders (weights), targets, entered script results and any data will be deleted forever too. The generated links will remain valid as is, but you will no longer be able to access them through the Results tab. You may consider hiding this outline instead of deleting it." %}</p>
+
+                                            <h5 class="md-error mt-2">{% trans "This operation cannot be undone!" %}</h5>
+
+                                        </div>
+                                        <div class="modal-footer">
+
+                                            <button id="dismiss-{{instance.id}}-btn" type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                                <b>{% trans 'Close' %}</b>
+                                            </button>
+
+                                            <form id="form-{{instance.id}}-form" action="{% url 'base:planer_delete' instance.id %}?show-hidden={{ show_hidden | lower }}" method="POST">
+                                                {% csrf_token %}
+                                                <button onclick="removeOutline(this,`dismiss-{{instance.id}}-btn`,`form-{{instance.id}}-form`,`{% trans 'Processing...' %}`)" class="btn btn-danger plausible-event-name=TWP+Planer+List+Action plausible-event-action=delete_confirm">{% trans 'Delete forever' %}</button>
+
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if show_hidden %}
+        <p><a class="btn btn-outline-ocean my-3 plausible-event-name=TWP+Planer+List+Action plausible-event-action=hide_hidden" href="{% url 'base:planer' %}?show-hidden=false" role="button">{% trans "Don't show hidden" %}</a></p>
+    {% else %}
+        <p><a class="btn btn-outline-ocean my-3 plausible-event-name=TWP+Planer+List+Action plausible-event-action=show_hidden" href="{% url 'base:planer' %}?show-hidden=true" role="button">{% trans 'Show hidden' %}</a></p>
+    {% endif %}
+
+{% endblock %}
+
+
+

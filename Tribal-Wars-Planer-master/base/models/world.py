@@ -1,0 +1,77 @@
+# Copyright: (c) 2020-2026, Rafał Safin <rafal.safin@rafsaf.pl>
+# GNU Affero General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/agpl-3.0.txt)
+
+import typing
+
+from django.db import models
+from django.utils.translation import gettext_lazy
+
+from base.models.server import Server
+from tribal_wars_planer.fetch_error_manager import FetchErrorManager
+
+
+class World(models.Model):
+    """World in the game"""
+
+    STATUS_CHOICES: list[tuple[str, str]] = [
+        ("active", "Active"),
+        ("inactive", "Inactive"),
+    ]
+    server = models.ForeignKey(Server, on_delete=models.CASCADE)
+    postfix = models.CharField(max_length=10)
+    connection_errors = models.IntegerField(default=0)
+    speed_world = models.FloatField(default=1)
+    speed_units = models.FloatField(default=1)
+    paladin = models.CharField(choices=STATUS_CHOICES, max_length=8, default="active")
+    archer = models.CharField(choices=STATUS_CHOICES, max_length=8, default="active")
+    militia = models.CharField(choices=STATUS_CHOICES, max_length=8, default="active")
+    max_noble_distance = models.IntegerField(default=500)
+    morale = models.IntegerField(default=1)
+    casual_attack_block_ratio = models.IntegerField(null=True, default=None, blank=True)
+    pending_delete = models.BooleanField(default=False)
+    fanout_key_text_player = models.CharField(default="__0", max_length=200)
+    fanout_key_text_tribe = models.CharField(default="__0", max_length=200)
+    fanout_key_text_village = models.CharField(default="__0", max_length=200)
+    full_game_name = models.CharField(max_length=256, default="", blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = FetchErrorManager()
+
+    if typing.TYPE_CHECKING:
+        server_id: int
+
+    def last_modified_timestamp(self) -> float:
+        world, data_type, timestampt_str = self.fanout_key_text_village.split("_")
+        return float(timestampt_str)
+
+    def name_with_server(self):
+        return self.server.prefix + self.postfix
+
+    def human(self, prefix: bool = False) -> str:
+        if prefix:
+            server_prefix: str = self.server.prefix
+            last = " " + server_prefix.upper()
+        else:
+            last = ""
+        return gettext_lazy("World ") + self.postfix + last
+
+    def game_name(self, prefix: bool = False) -> str:
+        if prefix:
+            server_prefix: str = self.server.prefix
+            last = " " + server_prefix.upper()
+        else:
+            last = ""
+        if self.full_game_name:
+            return self.full_game_name + last
+        return self.human(prefix=prefix)
+
+    def link_to_game(self, addition: str = ""):
+        return f"https://{self.name_with_server()}.{self.server.dns}{addition}"
+
+    def tw_stats_link_to_village(self, village_id: str | int):
+        return (
+            f"https://{self.server.prefix}.twstats.com/{self.name_with_server()}/index.php?"
+            f"page=village&id={village_id}"
+        )

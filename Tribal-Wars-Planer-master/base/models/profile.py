@@ -1,0 +1,75 @@
+# Copyright: (c) 2020-2026, Rafał Safin <rafal.safin@rafsaf.pl>
+# GNU Affero General Public License v3.0+ (see LICENSE or https://www.gnu.org/licenses/agpl-3.0.txt)
+
+import datetime
+
+from django.conf import settings
+from django.contrib.auth.models import User
+from django.db import models
+from django.utils import timezone, translation
+from django.utils.translation import gettext_lazy
+
+from base.models.outline import Outline
+from base.models.server import Server
+from tribal_wars_planer.fetch_error_manager import FetchErrorManager
+
+
+class Profile(models.Model):
+    INPUT_DATA_TYPES = [
+        ("Army collection", gettext_lazy("Army collection")),
+        ("Deff collection", gettext_lazy("Deff collection ")),
+    ]
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    server = models.ForeignKey(
+        Server, on_delete=models.SET_NULL, null=True, default=None
+    )
+    validity_date = models.DateField(
+        default=datetime.date(year=2021, month=2, day=25), blank=True, null=True
+    )
+    user_currency = models.CharField(
+        max_length=3,
+        default=None,
+        blank=True,
+        null=True,
+        choices=settings.SUPPORTED_CURRENCIES_CHOICES,
+    )
+    server_bind = models.BooleanField(default=False)
+    default_morale_on = models.BooleanField(default=False)
+    input_data_type = models.CharField(
+        max_length=32, default="Army collection", choices=INPUT_DATA_TYPES
+    )
+    sending_option = models.CharField(
+        default="default", choices=Outline.SENDING_OPTIONS, max_length=50
+    )
+    send_message_with_url = models.BooleanField(default=True)
+    send_message_title_message = models.CharField(
+        max_length=200, default=gettext_lazy("Outline Targets")
+    )
+    send_message_text_message = models.CharField(
+        max_length=2000, default="", blank=True
+    )
+    feature_flag_shipments = models.BooleanField(default=True)
+    deleted_at = models.DateTimeField(default=None, blank=True, null=True)
+    deleted_at_exp = models.DateTimeField(default=None, blank=True, null=True)
+
+    objects = FetchErrorManager()
+
+    def is_premium(self) -> bool:
+        if settings.PREMIUM_ACCOUNT_VALIDATION_ON:
+            if self.validity_date is None:
+                return False
+            today = timezone.localdate()
+            if today > self.validity_date:
+                return False
+            return True
+        return True
+
+    @property
+    def get_currency(self) -> str:
+        if self.user_currency is not None:
+            return self.user_currency
+
+        language = translation.get_language() or "pl"
+
+        return settings.LANGUAGE_TO_CURRENCY.get(language, settings.DEFAULT_CURRENCY)

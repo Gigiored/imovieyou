@@ -1,0 +1,11 @@
+python-decouple
+django
+djangorestframework
+djangorestframework-simplejwt
+djangorestframework-camel-case
+django-cors-headers
+django-extensions
+daphne
+channels
+celery
+channels_redis
