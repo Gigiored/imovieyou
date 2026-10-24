@@ -1,2 +1,0 @@
-javascript: $.getScript("https://rafsaf.github.io/scripts_tribal_wars/collect_troops_v20260218.js");
-void 0;
